@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Preview Sello — SERVENTEGRAL</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Arial,sans-serif;background:#eef2ee;min-height:100vh;display:flex;flex-direction:column}
+
+    header{background:#1B5E20;color:#fff;padding:10px 20px;font-size:15px;font-weight:bold;letter-spacing:.3px}
+
+    #main{display:flex;gap:16px;padding:16px;flex:1;overflow:auto}
+
+    /* ── Panel izquierdo ── */
+    #left{width:260px;flex-shrink:0;display:flex;flex-direction:column;gap:12px}
+
+    .card{background:#fff;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,.12);padding:14px}
+    .card h2{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:#1B5E20;
+             border-bottom:1px solid #C8E6C9;padding-bottom:6px;margin-bottom:10px}
+
+    .field label{display:block;font-size:10px;font-weight:bold;color:#2E7D32;margin-bottom:2px;margin-top:7px}
+    .field input[type=text]{width:100%;border:1px solid #C8E6C9;border-radius:4px;
+                             padding:4px 7px;font-size:12px;color:#222}
+    .field input[type=text]:focus{outline:none;border-color:#1B5E20}
+    .field input[type=file]{font-size:11px;margin-top:4px}
+
+    .btn{display:block;width:100%;padding:9px;border:none;border-radius:6px;
+         cursor:pointer;font-size:13px;font-weight:bold;text-align:center;margin-top:10px}
+    .btn-green{background:#2E7D32;color:#fff}  .btn-green:hover{background:#1B5E20}
+    .btn-blue {background:#1565C0;color:#fff}  .btn-blue:hover {background:#0D47A1}
+
+    .radio-row{display:flex;gap:8px;margin-top:6px}
+    .rbtn{flex:1;padding:7px 4px;border:2px solid #C8E6C9;border-radius:5px;cursor:pointer;
+          text-align:center;font-size:11px;font-weight:bold;color:#1B5E20;background:#fff;transition:.15s}
+    .rbtn.on{background:#1B5E20;color:#fff;border-color:#1B5E20}
+
+    input[type=range]{width:100%;margin:8px 0 2px;accent-color:#2E7D32}
+    .range-ends{display:flex;justify-content:space-between;font-size:10px;color:#888}
+
+    #status{margin-top:8px;padding:7px 10px;border-radius:5px;font-size:12px;display:none;text-align:center}
+    .ok {background:#C8E6C9;color:#1B5E20;display:block!important}
+    .err{background:#FFCDD2;color:#B71C1C;display:block!important}
+
+    /* ── Panel derecho ── */
+    #right{flex:1;display:flex;flex-direction:column;align-items:center;gap:12px}
+
+    #a4-wrap{box-shadow:0 6px 20px rgba(0,0,0,.3);background:#fff;display:inline-block}
+    #a4-wrap canvas{display:block}
+
+    #strip-wrap{display:flex;flex-direction:column;align-items:center;gap:4px}
+    #stamp-canvas{box-shadow:0 2px 8px rgba(0,0,0,.2);max-width:800px;width:100%}
+    #strip-label{font-size:10px;color:#666}
+  </style>
+</head>
+<body>
+<header>Preview · Sello de Radicado · SERVENTEGRAL S.A. E.S.P.</header>
+
+<div id="main">
+
+  <!-- ── Panel izquierdo ── -->
+  <div id="left">
+
+    <div class="card">
+      <h2>📝 Datos del sello</h2>
+      <div class="field">
+        <label>N° Radicado</label>
+        <input type="text" id="f-rad"  value="0001"            oninput="debounceDraw()">
+        <label>Fecha</label>
+        <input type="text" id="f-fec"  value="02/01/2026"      oninput="debounceDraw()">
+        <label>Recibido por</label>
+        <input type="text" id="f-rec"  value="LAURA GIRALDO"   oninput="debounceDraw()">
+        <label>Asunto</label>
+        <input type="text" id="f-asu"  value="DESAFILIACIONES" oninput="debounceDraw()">
+        <label>Anexos</label>
+        <input type="text" id="f-ane"  value="OTRO"            oninput="debounceDraw()">
+        <label>Área responsable</label>
+        <input type="text" id="f-area" value="GERENCIA"        oninput="debounceDraw()">
+        <label>Logo (si no carga automático)</label>
+        <input type="file" id="f-logo" accept="image/*" onchange="loadLogoFile(this)">
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>📍 Posición</h2>
+      <label style="font-size:10px;font-weight:bold;color:#2E7D32">Margen</label>
+      <div class="radio-row">
+        <div class="rbtn on" id="btn-der" onclick="setSide('derecho')">▷ Derecho</div>
+        <div class="rbtn"    id="btn-izq" onclick="setSide('izquierdo')">◁ Izquierdo</div>
+      </div>
+      <label style="font-size:10px;font-weight:bold;color:#2E7D32;display:block;margin-top:10px">
+        Posición vertical: <span id="v-label" style="font-weight:normal;color:#333">2.5 cm</span>
+      </label>
+      <input type="range" id="v-slider" min="0" max="1800000" step="36000" value="914400"
+             oninput="setOffset(this.value)">
+      <div class="range-ends"><span>0 cm</span><span>5 cm</span></div>
+      <button class="btn btn-blue" onclick="guardarConfig()">💾 Guardar config.json</button>
+      <div id="status"></div>
+    </div>
+
+  </div>
+
+  <!-- ── Panel derecho ── -->
+  <div id="right">
+    <div id="a4-wrap">
+      <canvas id="a4-canvas" width="420" height="594"></canvas>
+    </div>
+    <div id="strip-wrap">
+      <canvas id="stamp-canvas" width="900" height="278"></canvas>
+      <span id="strip-label">Vista real del sello (900 × 278 px)</span>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── Estado ────────────────────────────────────────────────────────────────────
+let logoImg = null;
+let cfg     = { lado: "derecho", offsetVertical: 914400 };
+let timer   = null;
+
+// Intentar cargar logo.png automáticamente
+const _auto = new Image();
+_auto.onload = () => { logoImg = _auto; drawAll(); };
+_auto.onerror = () => {};
+_auto.src = "logo.png";
+
+// ── Dibujar sello (diseño aprobado 900×278) ──────────────────────────────────
+function drawStamp(ctx, data, logo) {
+  const W = 900, H = 278;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = "#FFFFFF";
+  ctx.fillRect(0, 0, W, H);
+
+  // Franja superior
+  ctx.fillStyle = "#1B5E20";
+  ctx.fillRect(0, 0, W, 35);
+  ctx.fillStyle = "#FFFFFF"; ctx.textBaseline = "middle";
+  ctx.textAlign = "left";  ctx.font = "bold 12px Arial";
+  ctx.fillText("SERVENTEGRAL S.A. E.S.P", 15, 17);
+  ctx.textAlign = "right"; ctx.font = "11px Arial";
+  ctx.fillText("NIT: 828.002.229-2", 885, 17);
+  ctx.strokeStyle = "rgba(255,255,255,0.25)"; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0,35); ctx.lineTo(W,35); ctx.stroke();
+
+  // Columna izquierda (logo)
+  ctx.fillStyle = "#1B5E20";
+  ctx.fillRect(0, 35, 200, 243);
+  if (logo) {
+    const maxW = 180, maxH = 223;
+    const scale = Math.min(maxW/logo.width, maxH/logo.height);
+    const iw = logo.width*scale, ih = logo.height*scale;
+    ctx.drawImage(logo, (200-iw)/2, 35+(243-ih)/2, iw, ih);
+  }
+  ctx.strokeStyle = "rgba(255,255,255,0.25)"; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(200,35); ctx.lineTo(200,H); ctx.stroke();
+
+  // Filas de datos
+  const filas = [
+    {label:"N° RADICADO:",  value:data.rad,  h:43, bold:true,  size:22},
+    {label:"FECHA:",        value:data.fec,  h:40, bold:false, size:12},
+    {label:"RECIBIDO POR:", value:data.rec,  h:40, bold:false, size:12},
+    {label:"ASUNTO:",       value:data.asu,  h:40, bold:false, size:12},
+    {label:"ANEXOS:",       value:data.ane,  h:40, bold:false, size:12},
+    {label:"ÁREA RESP:",    value:data.area, h:40, bold:false, size:12},
+  ];
+  const bgFilas = ["#FFFFFF","#F1F8E9"];
+  ctx.textAlign = "left"; ctx.textBaseline = "middle";
+  let ry = 35;
+  for (let i = 0; i < filas.length; i++) {
+    const f = filas[i];
+    ctx.fillStyle = bgFilas[i%2]; ctx.fillRect(200, ry, 700, f.h);
+    ctx.fillStyle = "#1B5E20"; ctx.font = "bold 10px Arial";
+    ctx.fillText(f.label, 210, ry+f.h/2);
+    ctx.fillStyle = "#000000"; ctx.font = `${f.bold?"bold ":""}${f.size}px Arial`;
+    ctx.fillText(String(f.value||""), 370, ry+f.h/2);
+    ry += f.h;
+    ctx.strokeStyle = "#C8E6C9"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(200,ry); ctx.lineTo(W,ry); ctx.stroke();
+  }
+
+  // Borde exterior
+  ctx.strokeStyle = "#1B5E20"; ctx.lineWidth = 2;
+  ctx.strokeRect(1, 1, 898, 276);
+}
+
+// ── Dibujar hoja A4 ───────────────────────────────────────────────────────────
+function drawA4(stampCanvas) {
+  const a4  = document.getElementById("a4-canvas");
+  const ctx = a4.getContext("2d");
+  const SC  = 2, PW = 420, PH = 594;
+
+  // Dimensiones físicas del sello (EMU→mm→px @2px/mm)
+  const SW = (1143000/36000)*SC;   // ≈ 63.5 px
+  const SH = (8636000/36000)*SC;   // ≈ 480 px
+
+  ctx.clearRect(0,0,PW,PH);
+  ctx.fillStyle="#fff"; ctx.fillRect(0,0,PW,PH);
+
+  // Líneas de texto simuladas
+  const der = cfg.lado === "derecho";
+  const ml  = (der?25:40)*SC, mr=(der?40:25)*SC, cw=PW-ml-mr;
+  ctx.fillStyle="#EBEBEB";
+  for(let i=0;i<30;i++){
+    const ly=25*SC+i*16; if(ly>PH-30) break;
+    ctx.fillRect(ml,ly,i%6===5?cw*.55:cw,4);
+  }
+
+  // Línea guía del margen
+  ctx.strokeStyle="#D8D8D8"; ctx.lineWidth=.5; ctx.setLineDash([4,4]);
+  const gx = der ? PW-40*SC : 40*SC;
+  ctx.beginPath(); ctx.moveTo(gx,0); ctx.lineTo(gx,PH); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Sello rotado -90°
+  const sy = (cfg.offsetVertical/36000)*SC;
+  const sx = der ? PW-SW : 0;
+  ctx.save();
+  ctx.translate(sx+SW/2, sy+SH/2);
+  ctx.rotate(der ? -Math.PI/2 : Math.PI/2);
+  ctx.drawImage(stampCanvas, -SH/2, -SW/2, SH, SW);
+  ctx.restore();
+
+  // Advertencia fuera de página
+  if(sy+SH>PH){
+    ctx.fillStyle="rgba(200,0,0,.2)"; ctx.fillRect(sx,PH-5,SW,5);
+    ctx.fillStyle="#C62828"; ctx.font="10px Arial";
+    ctx.textAlign="center"; ctx.textBaseline="bottom";
+    ctx.fillText("⚠ Sello fuera de página",PW/2,PH-2);
+  }
+
+  // Borde de la hoja
+  ctx.strokeStyle="#BBB"; ctx.lineWidth=1; ctx.strokeRect(0,0,PW,PH);
+}
+
+// ── Redibujar todo ────────────────────────────────────────────────────────────
+function drawAll() {
+  const data = {
+    rad:  document.getElementById("f-rad").value,
+    fec:  document.getElementById("f-fec").value,
+    rec:  document.getElementById("f-rec").value,
+    asu:  document.getElementById("f-asu").value,
+    ane:  document.getElementById("f-ane").value,
+    area: document.getElementById("f-area").value,
+  };
+  const sc = document.getElementById("stamp-canvas");
+  drawStamp(sc.getContext("2d"), data, logoImg);
+  drawA4(sc);
+}
+
+function debounceDraw() {
+  clearTimeout(timer);
+  timer = setTimeout(drawAll, 120);
+}
+
+// ── Controles ─────────────────────────────────────────────────────────────────
+function setSide(lado) {
+  cfg.lado = lado;
+  document.getElementById("btn-der").classList.toggle("on", lado==="derecho");
+  document.getElementById("btn-izq").classList.toggle("on", lado==="izquierdo");
+  drawAll();
+}
+
+function setOffset(val) {
+  cfg.offsetVertical = parseInt(val,10);
+  document.getElementById("v-label").textContent =
+    `${(cfg.offsetVertical/36000/10).toFixed(1)} cm`;
+  drawAll();
+}
+
+function loadLogoFile(input) {
+  const f = input.files[0]; if(!f) return;
+  const r = new FileReader();
+  r.onload = e => {
+    const img = new Image();
+    img.onload = () => { logoImg = img; drawAll(); };
+    img.src = e.target.result;
+  };
+  r.readAsDataURL(f);
+}
+
+async function guardarConfig() {
+  const st  = document.getElementById("status");
+  const txt = JSON.stringify(cfg, null, 2);
+  if (window.showSaveFilePicker) {
+    try {
+      const h = await window.showSaveFilePicker({
+        suggestedName:"config.json",
+        types:[{description:"JSON",accept:{"application/json":[".json"]}}]
+      });
+      const w = await h.createWritable();
+      await w.write(txt); await w.close();
+      st.className="ok"; st.textContent="✓ config.json guardado.";
+    } catch(e) {
+      if(e.name!=="AbortError"){ st.className="err"; st.textContent="✗ "+e.message; }
+    }
+  } else {
+    const a=Object.assign(document.createElement("a"),{
+      href:URL.createObjectURL(new Blob([txt],{type:"application/json"})),
+      download:"config.json"
+    });
+    a.click();
+    st.className="ok"; st.textContent="✓ Descargado — cópialo a la carpeta del proyecto.";
+  }
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+setOffset(914400);
+drawAll();
+</script>
+</body>
+</html>

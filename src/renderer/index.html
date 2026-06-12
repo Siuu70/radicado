@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: file:; script-src 'self'"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Sello Radicado — SERVENTEGRAL</title>
+  <link rel="stylesheet" href="styles.css"/>
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────────────────── -->
+<header>
+  <div id="header-logo-wrap">
+    <div class="header-logo-placeholder" id="header-placeholder">Si</div>
+  </div>
+  <div class="header-text">
+    <h1>Sello de Radicado</h1>
+    <p>SERVENTEGRAL S.A. E.S.P. · NIT 828.002.229-2</p>
+  </div>
+  <div class="header-tabs">
+    <button class="tab-btn active" id="tab-btn-procesar">▶ Procesar</button>
+    <button class="tab-btn" id="tab-btn-preview">👁 Preview</button>
+  </div>
+</header>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     TAB: PROCESAR
+══════════════════════════════════════════════════════════════════════ -->
+<div class="layout tab-panel active" id="panel-procesar">
+
+  <!-- Panel izquierdo: configuración -->
+  <aside class="panel-config">
+
+    <div class="section-label">Fuente de datos</div>
+
+    <div class="field">
+      <label>Archivo Excel (radicados)</label>
+      <div class="field-row">
+        <input type="text" id="inp-excel" readonly placeholder="Seleccione radicados.xlsx…"/>
+        <button class="btn-pick" id="btn-excel" title="Buscar archivo Excel">📂</button>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+    <div class="section-label">Documentos a radicar</div>
+
+    <div class="field">
+      <label>Archivos .pdf</label>
+      <div class="field-row">
+        <input type="text" id="inp-docs-files" readonly placeholder="Seleccione uno o más documentos…"/>
+        <button class="btn-pick" id="btn-docs-files" title="Seleccionar archivos">📄</button>
+      </div>
+      <div id="file-list-wrap" style="display:none">
+        <div class="file-list" id="file-list"></div>
+        <button class="btn-clear-files" id="btn-clear-files">✕ Limpiar selección</button>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+    <div class="section-label">Salida</div>
+
+    <div class="field">
+      <label>Carpeta de salida</label>
+      <div class="field-row">
+        <input type="text" id="inp-out" readonly placeholder="Donde guardar resultados…"/>
+        <button class="btn-pick" id="btn-out" title="Seleccionar carpeta">📁</button>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+    <div class="section-label">Logo empresa</div>
+
+    <div class="field">
+      <label>Logo PNG (para el sello)</label>
+      <div class="field-row">
+        <input type="text" id="inp-logo" readonly placeholder="logo.png (opcional)…"/>
+        <button class="btn-pick" id="btn-logo" title="Seleccionar logo">🖼</button>
+      </div>
+    </div>
+
+    <div style="flex:1"></div>
+
+    <div class="hint-preview" id="hint-preview">
+      <span>📐</span>
+      <span>Ajusta la posición del sello en <button class="hint-link" id="hint-go-preview">👁 Preview</button> antes de procesar.</span>
+    </div>
+
+    <div class="progress-wrap">
+      <div class="progress-bar-track">
+        <div class="progress-bar-fill" id="progress-fill"></div>
+      </div>
+      <span class="progress-text" id="progress-text">0 / 0</span>
+    </div>
+
+    <button class="btn-process" id="btn-process" disabled>
+      <span id="btn-icon">▶</span>
+      <span id="btn-label">Procesar documentos</span>
+    </button>
+
+  </aside>
+
+  <!-- Panel derecho: log -->
+  <main class="panel-log">
+    <div class="log-header">
+      <span>Consola de ejecución</span>
+      <button class="btn-clear" id="btn-clear">Limpiar</button>
+    </div>
+
+    <div class="log-console" id="log"></div>
+
+    <div class="result-bar" id="result-bar">
+      <span id="result-text" style="color:#9E9E9E">Esperando proceso…</span>
+      <button class="btn-open-out" id="btn-open-out" disabled>Abrir carpeta salida</button>
+    </div>
+  </main>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     TAB: PREVIEW
+══════════════════════════════════════════════════════════════════════ -->
+<div class="preview-panel tab-panel" id="panel-preview">
+
+  <!-- Panel izquierdo: controles -->
+  <div class="preview-left">
+
+    <div class="pv-card">
+      <div class="section-label">Datos del sello</div>
+      <div class="pv-fields">
+        <label>N° Radicado</label>
+        <input type="text" id="pv-rad"  value="0001"/>
+        <label>Fecha</label>
+        <input type="text" id="pv-fec"  value="02/01/2026"/>
+        <label>Recibido por</label>
+        <input type="text" id="pv-rec"  value="LAURA GIRALDO"/>
+        <label>Asunto</label>
+        <input type="text" id="pv-asu"  value="DESAFILIACIONES"/>
+        <label>Anexos</label>
+        <input type="text" id="pv-ane"  value="OTRO"/>
+        <label>Área responsable</label>
+        <input type="text" id="pv-area" value="GERENCIA"/>
+      </div>
+    </div>
+
+    <div class="pv-card">
+      <div class="section-label">Posición</div>
+      <label class="pv-label">Margen</label>
+      <div class="pv-radio-row">
+        <button class="pv-rbtn active" id="pv-btn-der">▷ Derecho</button>
+        <button class="pv-rbtn"        id="pv-btn-izq">◁ Izquierdo</button>
+      </div>
+      <label class="pv-label">Vertical: <span id="pv-v-label" style="font-weight:normal;color:#333">2.5 cm</span></label>
+      <input type="range" id="pv-slider" min="0" max="1800000" step="36000" value="914400"/>
+      <div class="pv-range-ends"><span>0 cm</span><span>5 cm</span></div>
+      <button class="btn-process" id="pv-save" style="margin-top:12px;font-size:13px;padding:9px">
+        💾 Guardar config.json
+      </button>
+      <div id="pv-status"></div>
+    </div>
+
+  </div>
+
+  <!-- Panel derecho: canvases -->
+  <div class="preview-right">
+    <div class="pv-a4-wrap">
+      <canvas id="pv-a4" width="420" height="594"></canvas>
+    </div>
+    <div class="pv-stamp-wrap">
+      <canvas id="pv-stamp" width="900" height="278"></canvas>
+      <span class="pv-stamp-label">Vista real del sello (900 × 278 px)</span>
+    </div>
+  </div>
+
+</div>
+
+<script src="renderer.js"></script>
+</body>
+</html>

@@ -1,0 +1,33 @@
+# Dependencias
+node_modules/
+
+# Build output
+dist/
+
+# Archivos de prueba y temporales
+test_sello.png
+test_sello.js
+convertir-icono.js
+
+# Carpetas de salida (PDFs generados)
+salida/
+salida_test/
+
+# Documentos de entrada (datos del usuario)
+documentos/
+
+# Archivos personales / no código
+"WhatsApp Image*"
+*.jpeg
+*.jpg
+
+# Logs
+*.log
+npm-debug.log*
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# Variables de entorno
+.env

@@ -1,0 +1,68 @@
+{
+  "name": "sello-radicado",
+  "version": "1.0.0",
+  "description": "Sello de Radicado — SERVENTEGRAL S.A. E.S.P.",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "dependencies": {
+    "canvas": "^3.2.3",
+    "pdf-lib": "^1.17.1",
+    "pizzip": "^3.1.7",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "electron": "^28.3.3",
+    "electron-builder": "^24.13.3",
+    "png-to-ico": "^3.0.1"
+  },
+  "build": {
+    "appId": "com.serventegral.sello-radicado",
+    "productName": "Sello Radicado",
+    "copyright": "SERVENTEGRAL S.A. E.S.P.",
+    "icon": "assets/camion.ico",
+    "files": [
+      "src/**/*",
+      "assets/**/*"
+    ],
+    "asarUnpack": [
+      "node_modules/canvas/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "logo.png",
+        "to": "logo.png"
+      },
+      {
+        "from": "config.json",
+        "to": "config.json"
+      }
+    ],
+    "win": {
+      "icon": "assets/camion.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Sello de Radicado",
+      "installerIcon": "assets/camion.ico",
+      "uninstallerIcon": "assets/camion.ico"
+    },
+    "directories": {
+      "output": "dist"
+    }
+  }
+}
