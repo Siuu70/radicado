@@ -367,7 +367,7 @@ async function procesarDocx(fields, docFile, outDir, logoBuffer, cfg) {
 // ══════════════════════════════════════════════════════════════════════════════
 
 async function procesarPDF(fields, docFile, outDir, logoBuffer, cfg) {
-  const { PDFDocument, degrees } = require("pdf-lib");
+  const { PDFDocument, degrees, PDFName } = require("pdf-lib");
 
   const pdfDoc   = await PDFDocument.load(fs.readFileSync(docFile));
   const pngBuffer = await generarSelloPNG(fields, logoBuffer);
@@ -378,35 +378,38 @@ async function procesarPDF(fields, docFile, outDir, logoBuffer, cfg) {
   const { width: pw, height: ph } = page.getSize();
 
   const lado = cfg?.lado === "izquierdo" ? "izquierdo" : "derecho";
-  const vEmu = cfg?.offsetVertical ?? 914400;
 
-  // EMU → puntos tipográficos  (914400 EMU = 1 pulgada = 72 pt)
-  const vPt = vEmu / 12700;
-
-  // Dimensiones visibles del sello (idénticas al DOCX)
-  const sw = 1486000 / 12700;   // ≈ 117 pt grosor visible (ratio 900/278 = 3.24)
-  const sh = 4800000 / 12700;   // ≈ 378 pt largo visible del sello
+  // Dimensiones del sello — idénticas para ambos lados
+  const sw = 1486000 / 12700;   // ≈ 117 pt (grosor, ratio 900/278 = 3.24)
+  const sh = 4800000 / 12700;   // ≈ 378 pt (largo)
+  const sy = (ph - sh) / 2;     // centrado vertical
 
   if (lado === "derecho") {
-    // Ampliar la página a la derecha para que el contenido original NO se tape
+    // Ampliar a la derecha — solo coordenadas positivas
     page.setSize(pw + sw, ph);
-    // Con rotate(90°CCW): pivot en (x,y), imagen ocupa x-H…x horizontal, y…y+W vertical
-    // x = pw+sw → franja ocupa pw a pw+sw (zona nueva, fuera del contenido original)
+    page.node.delete(PDFName.of("CropBox"));
     page.drawImage(pngImage, {
       x: pw + sw,
-      y: (ph - sh) / 2,
+      y: sy,
       width:  sh,
       height: sw,
       rotate: degrees(90),
     });
   } else {
-    // IZQUIERDO: extender el MediaBox hacia la izquierda — el contenido existente
-    // no se desplaza; la zona nueva x=[-sw, 0] queda libre para el sello.
-    const { x: mbX, y: mbY } = page.getMediaBox();
-    page.setMediaBox(mbX - sw, mbY, pw + sw, ph);
+    // IZQUIERDO: cargar el PDF original en un documento SEPARADO para incrustar
+    // la página como Form XObject — evita auto-referencia (que causa 3× render).
+    const pdfOrig = await PDFDocument.load(fs.readFileSync(docFile));
+    const [paginaOrig] = await pdfDoc.embedPdf(pdfOrig, [0]);
+
+    page.node.delete(PDFName.of("CropBox"));
+    page.setSize(pw + sw, ph);
+    page.node.set(PDFName.of("Contents"), pdfDoc.context.obj([]));
+    // Contenido original desplazado sw hacia la derecha
+    page.drawPage(paginaOrig, { x: sw, y: 0, width: pw, height: ph });
+    // Sello: pivot en x=sw, rotate 90°CCW → ocupa [0, sw]
     page.drawImage(pngImage, {
-      x: mbX,             // pivot en el borde izquierdo original → sello ocupa [mbX-sw, mbX]
-      y: (ph - sh) / 2,
+      x: sw,
+      y: sy,
       width:  sh,
       height: sw,
       rotate: degrees(90),
@@ -444,10 +447,12 @@ async function processAll({ xlsxPath, docsFiles, outDir, logoPath, cfg: cfgPasse
   onProgress({ type: "info", msg: `Registros en Excel: ${rows.length}` });
   onProgress({ type: "info", msg: `Archivos seleccionados: ${docsFiles.length}` });
 
-  // Calcular el último número de radicado válido y el siguiente a usar
-  const filasValidas = rows.filter(r => r.NUMERO_RADICADO && !isNaN(Number(r.NUMERO_RADICADO)));
-  const ultimoNum    = filasValidas.length > 0 ? Number(filasValidas[filasValidas.length - 1].NUMERO_RADICADO) : 0;
-  onProgress({ type: "info", msg: `Último radicado en Excel: ${ultimoNum} → siguiente: ${ultimoNum + 1}` });
+  // Calcular el último número de radicado válido (columna RADICADO, sin normalizar)
+  const wbRaw       = XLSX.readFile(xlsxPath);
+  const rawRows     = XLSX.utils.sheet_to_json(wbRaw.Sheets[wbRaw.SheetNames[0]], { defval: "" });
+  const filasValidas = rawRows.filter(r => r["RADICADO"] && !isNaN(Number(r["RADICADO"])));
+  const ultimoNum    = filasValidas.length > 0 ? Number(filasValidas[filasValidas.length - 1]["RADICADO"]) : 0;
+  onProgress({ type: "info", msg: `Último radicado en Excel: ${ultimoNum}` });
 
   const pairs = buildPairs(rows, docsFiles);
   let ok = 0, fail = 0;
@@ -460,8 +465,7 @@ async function processAll({ xlsxPath, docsFiles, outDir, logoPath, cfg: cfgPasse
       onProgress({ type: "warn", msg: `Sin fila Excel para: ${nombre} — omitido` });
       fail++; continue;
     }
-    // Auto-generar número de radicado: último Excel + posición en el lote
-    const nuevoNumero    = String(ultimoNum + i + 1).padStart(4, "0");
+    const nuevoNumero    = String(ultimoNum).padStart(4, "0");
     const rowConNumero   = { ...row, NUMERO_RADICADO: nuevoNumero };
     const tipo = path.extname(filePath).toLowerCase();
     try {
@@ -469,8 +473,13 @@ async function processAll({ xlsxPath, docsFiles, outDir, logoPath, cfg: cfgPasse
       if (tipo === ".pdf") result = await procesarPDF(rowConNumero, filePath, outDir, logoBuffer, cfg);
       else                 result = { ok: false, reason: `Solo PDF — ignorado (${tipo})` };
 
-      if (result.ok) { ok++;   onProgress({ type: "ok",    msg: `Procesado: ${nombre} — Radicado ${nuevoNumero}` }); }
-      else           { fail++; onProgress({ type: "error", msg: `Omitido: ${nombre} — ${result.reason}` }); }
+      if (result.ok) {
+        ok++;
+        onProgress({ type: "ok", msg: `Procesado: ${nombre} — Radicado ${nuevoNumero}` });
+      } else {
+        fail++;
+        onProgress({ type: "error", msg: `Omitido: ${nombre} — ${result.reason}` });
+      }
     } catch (err) {
       fail++; onProgress({ type: "error", msg: `ERROR en ${nombre}: ${err.message}` });
     }
