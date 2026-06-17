@@ -46,7 +46,8 @@ function excelDateToString(serial) {
   if (!serial) return "";
   if (isNaN(Number(serial))) return String(serial).trim();
   const date = new Date(Math.round((Number(serial) - 25569) * 86400 * 1000));
-  return date.toLocaleDateString("es-CO", { day: "2-digit", month: "2-digit", year: "numeric" });
+  const fechaCorregida = new Date(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+  return fechaCorregida.toLocaleDateString("es-CO", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
 function normalizeRow(raw) {
@@ -438,39 +439,55 @@ async function processAll({ xlsxPath, docsFiles, outDir, logoPath, cfg: cfgPasse
     onProgress({ type: "warn", msg: "logo.png no encontrado — el sello no tendrá logo." });
   }
 
-  const rows = leerRadicados(xlsxPath);
-  onProgress({ type: "info", msg: `Registros en Excel: ${rows.length}` });
   onProgress({ type: "info", msg: `Archivos seleccionados: ${docsFiles.length}` });
 
-  // Calcular el último número de radicado válido (columna RADICADO, sin normalizar)
-  const wbRaw       = XLSX.readFile(xlsxPath);
-  const rawRows     = XLSX.utils.sheet_to_json(wbRaw.Sheets[wbRaw.SheetNames[0]], { defval: "" });
+  // Leer Excel crudo — nombres exactos de columna
+  const wbRaw      = XLSX.readFile(xlsxPath);
+  const rawRows    = XLSX.utils.sheet_to_json(wbRaw.Sheets[wbRaw.SheetNames[0]], { defval: "" });
   const filasValidas = rawRows.filter(r => r["RADICADO"] && !isNaN(Number(r["RADICADO"])));
-  const ultimoNum    = filasValidas.length > 0 ? Number(filasValidas[filasValidas.length - 1]["RADICADO"]) : 0;
+  const ultimaFila   = filasValidas[filasValidas.length - 1] ?? {};
+  const ultimoNum    = filasValidas.length > 0 ? Number(ultimaFila["RADICADO"]) : 0;
   onProgress({ type: "info", msg: `Último radicado en Excel: ${ultimoNum}` });
 
-  const pairs = buildPairs(rows, docsFiles);
+  // Campos del sello — acceso directo con nombres exactos del Excel
+  const radicado    = String(ultimoNum).padStart(4, "0");
+  const recibidoPor = String(ultimaFila[" QUEN RECIBIO"]                      || "").trim();
+  const asunto      = String(ultimaFila["ASUNTO"]                             || "").trim();
+  const anexos      = String(ultimaFila["ANEXOS "]                            ?? "").trim();
+  const fecha       = excelDateToString(ultimaFila["FECHA DE INGRESO DE LA SOLICITUD"]);
+  const areaResp    = String(ultimaFila["PROCESO  RESPONSABLE"]               || "").trim();
+
+  console.log("radicado:", radicado);
+  console.log("fecha:", fecha);
+  console.log("recibidoPor:", recibidoPor);
+  console.log("asunto:", asunto);
+  console.log("anexos:", anexos);
+  console.log("areaResp:", areaResp);
+
+  const fields = {
+    NUMERO_RADICADO:  radicado,
+    RECIBIDO_POR:     recibidoPor,
+    ASUNTO:           asunto,
+    ANEXOS:           anexos,
+    AREA_RESPONSABLE: areaResp,
+    FECHA_RECIBIDO:   fecha,
+  };
+
   let ok = 0, fail = 0;
 
-  for (let i = 0; i < pairs.length; i++) {
-    const { row, filePath, matched } = pairs[i];
-    onProgress({ type: "progress", current: i + 1, total: pairs.length });
+  for (let i = 0; i < docsFiles.length; i++) {
+    const filePath = docsFiles[i];
+    onProgress({ type: "progress", current: i + 1, total: docsFiles.length });
     const nombre = path.basename(filePath);
-    if (!row) {
-      onProgress({ type: "warn", msg: `Sin fila Excel para: ${nombre} — omitido` });
-      fail++; continue;
-    }
-    const nuevoNumero    = String(ultimoNum).padStart(4, "0");
-    const rowConNumero   = { ...row, NUMERO_RADICADO: nuevoNumero };
-    const tipo = path.extname(filePath).toLowerCase();
+    const tipo   = path.extname(filePath).toLowerCase();
     try {
       let result;
-      if (tipo === ".pdf") result = await procesarPDF(rowConNumero, filePath, outDir, logoBuffer, cfg);
+      if (tipo === ".pdf") result = await procesarPDF(fields, filePath, outDir, logoBuffer, cfg);
       else                 result = { ok: false, reason: `Solo PDF — ignorado (${tipo})` };
 
       if (result.ok) {
         ok++;
-        onProgress({ type: "ok", msg: `Procesado: ${nombre} — Radicado ${nuevoNumero}` });
+        onProgress({ type: "ok", msg: `Procesado: ${nombre} — Radicado ${radicado}` });
       } else {
         fail++;
         onProgress({ type: "error", msg: `Omitido: ${nombre} — ${result.reason}` });
@@ -479,7 +496,7 @@ async function processAll({ xlsxPath, docsFiles, outDir, logoPath, cfg: cfgPasse
       fail++; onProgress({ type: "error", msg: `ERROR en ${nombre}: ${err.message}` });
     }
   }
-  return { ok, fail, total: pairs.length };
+  return { ok, fail, total: docsFiles.length };
 }
 
 module.exports = { processAll };
