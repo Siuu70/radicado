@@ -36,35 +36,30 @@ function get(raw, ...names) {
   return "";
 }
 
-function getDate(raw, ...names) {
-  const keys = Object.keys(raw);
-  for (const name of names) {
-    const n = name.trim().toLowerCase();
-    const k = keys.find((k) => k.trim().toLowerCase() === n);
-    if (k !== undefined && raw[k] !== null && raw[k] !== undefined && raw[k] !== "") {
-      const v = raw[k];
-      if (typeof v === "number") {
-        const d = XLSX.SSF.parse_date_code(v);
-        return `${String(d.d).padStart(2,"0")}/${String(d.m).padStart(2,"0")}/${d.y}`;
-      }
-      return String(v).trim();
-    }
-  }
-  return "";
+function getRaw(raw, name) {
+  const n = name.trim().toLowerCase();
+  const k = Object.keys(raw).find((k) => k.trim().toLowerCase() === n);
+  return k !== undefined ? raw[k] : "";
+}
+
+function excelDateToString(serial) {
+  if (!serial) return "";
+  if (isNaN(Number(serial))) return String(serial).trim();
+  const date = new Date(Math.round((Number(serial) - 25569) * 86400 * 1000));
+  return date.toLocaleDateString("es-CO", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
 function normalizeRow(raw) {
-  const radRaw = get(raw,"radicado","numero_radicado","n° radicado","nro radicado","numero radicado");
+  const rad = get(raw, "radicado");
   return {
-    NUMERO_RADICADO:   /^\d+$/.test(radRaw) ? String(parseInt(radRaw,10)).padStart(4,"0") : radRaw,
-    RECIBIDO_POR:      get(raw,"quien recibio","quen recibio","recibido_por","recibido por","nombre"),
-    ENTREGADO_POR:     get(raw,"entregado_por","entregado por","entregado","quien entrego","quien entregó"),
-    ASUNTO:            get(raw,"asunto"),
-    ANEXOS:            get(raw,"anexos","tipo de solicitud","entidad"),
-    AREA_RESPONSABLE:  get(raw,"area_responsable","area responsable","área responsable","área resp","area"),
-    FECHA_RECIBIDO:    getDate(raw,"fecha_recibido","fecha recibido","fecha de ingreso de la solicitud","fecha ingreso","fecha"),
-    CONSECUTIVO:       get(raw,"consecutivo","archivo_documento"),
-    ARCHIVO_DOCUMENTO: get(raw,"archivo_documento"),
+    NUMERO_RADICADO:   /^\d+$/.test(rad) ? String(parseInt(rad, 10)).padStart(4, "0") : rad,
+    RECIBIDO_POR:      get(raw, "nombre"),
+    ASUNTO:            get(raw, "asunto"),
+    ANEXOS:            get(raw, "anexos"),
+    AREA_RESPONSABLE:  get(raw, "proceso  responsable"),
+    FECHA_RECIBIDO:    excelDateToString(getRaw(raw, "fecha de ingreso de la solicitud")),
+    CONSECUTIVO:       get(raw, "consecutivo", "archivo_documento"),
+    ARCHIVO_DOCUMENTO: get(raw, "archivo_documento"),
   };
 }
 
