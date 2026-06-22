@@ -2,415 +2,157 @@
 
 const fs     = require("fs");
 const path   = require("path");
-const XLSX   = require("xlsx");
-const PizZip = require("pizzip");
-const { createCanvas, loadImage } = require("canvas");
-const { app } = require("electron");
-
-// Raíz de recursos: resources/ en producción, carpeta del proyecto en dev
-const BASE = app.isPackaged
-  ? process.resourcesPath
-  : path.join(__dirname, "..");
-
-// Retorna la ruta real del logo: logo del usuario → logo por defecto → null
-function getLogoPath(cfgLogoPath) {
-  if (cfgLogoPath && fs.existsSync(cfgLogoPath)) return cfgLogoPath;
-  const def = path.join(BASE, "logo.png");
-  return fs.existsSync(def) ? def : null;
-}
+const { createCanvas } = require("canvas");
 
 // ══════════════════════════════════════════════════════════════════════════════
-//  MAPEO FLEXIBLE DE COLUMNAS
+//  HELPERS DE FECHA/HORA (exportados para main.js)
 // ══════════════════════════════════════════════════════════════════════════════
 
-function get(raw, ...names) {
-  const keys = Object.keys(raw);
-  for (const name of names) {
-    const n = name.trim().toLowerCase();
-    const k = keys.find((k) => k.trim().toLowerCase() === n);
-    if (k !== undefined && raw[k] !== null && raw[k] !== undefined) {
-      const v = String(raw[k]).trim();
-      if (v) return v;
-    }
-  }
-  return "";
-}
-
-function getRaw(raw, name) {
-  const n = name.trim().toLowerCase();
-  const k = Object.keys(raw).find((k) => k.trim().toLowerCase() === n);
-  return k !== undefined ? raw[k] : "";
+function excelTimeToString(serial) {
+  if (!serial) return "";
+  if (isNaN(Number(serial))) return String(serial).trim();
+  const totalMinutos = Math.round(Number(serial) * 1440);
+  const hh = Math.floor(totalMinutos / 60).toString().padStart(2, "0");
+  const mm  = (totalMinutos % 60).toString().padStart(2, "0");
+  return `${hh}:${mm}`;
 }
 
 function excelDateToString(serial) {
   if (!serial) return "";
   if (isNaN(Number(serial))) return String(serial).trim();
   const date = new Date(Math.round((Number(serial) - 25569) * 86400 * 1000));
-  const fechaCorregida = new Date(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
-  return fechaCorregida.toLocaleDateString("es-CO", { day: "2-digit", month: "2-digit", year: "numeric" });
-}
-
-function normalizeRow(raw) {
-  const rad = get(raw, "radicado");
-  return {
-    NUMERO_RADICADO:   /^\d+$/.test(rad) ? String(parseInt(rad, 10)).padStart(4, "0") : rad,
-    RECIBIDO_POR:      get(raw, "nombre"),
-    ASUNTO:            get(raw, "asunto"),
-    ANEXOS:            get(raw, "anexos"),
-    AREA_RESPONSABLE:  get(raw, "proceso  responsable"),
-    FECHA_RECIBIDO:    excelDateToString(getRaw(raw, "fecha de ingreso de la solicitud")),
-    CONSECUTIVO:       get(raw, "consecutivo", "archivo_documento"),
-    ARCHIVO_DOCUMENTO: get(raw, "archivo_documento"),
-  };
-}
-
-function leerRadicados(xlsxPath) {
-  const wb  = XLSX.readFile(xlsxPath);
-  const ws  = wb.Sheets[wb.SheetNames[0]];
-  return XLSX.utils.sheet_to_json(ws, { defval: "" }).map(normalizeRow);
+  const fc   = new Date(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+  return fc.toLocaleDateString("es-CO", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-//  EMPAREJAMIENTO archivos ↔ filas
+//  SELLO PNG  — 2 filas, ancho dinámico, blanco y negro, 10px Arial
+//  d = { radicado, fecha, hora, asunto, anexos, radicadoPor }
 // ══════════════════════════════════════════════════════════════════════════════
 
-function buildPairs(rows, docsFiles) {
-  const byBase = new Map();
-  const byFull = new Map();
-  for (const fp of docsFiles) {
-    byFull.set(path.basename(fp).toLowerCase(), fp);
-    byBase.set(path.basename(fp, path.extname(fp)).toLowerCase(), fp);
-  }
-  const pairs    = [];
-  const usedRows = new Set();
-  for (const fp of docsFiles) {
-    const base = path.basename(fp, path.extname(fp)).toLowerCase();
-    const full = path.basename(fp).toLowerCase();
-    let matchRow = null;
-    for (let i = 0; i < rows.length; i++) {
-      if (usedRows.has(i)) continue;
-      const r = rows[i];
-      const consec = (r.CONSECUTIVO || "").toLowerCase();
-      const adoc   = (r.ARCHIVO_DOCUMENTO || "").toLowerCase();
-      if (consec===base || consec===full || adoc===full ||
-          path.basename(adoc, path.extname(adoc))===base) {
-        matchRow = i; break;
-      }
-    }
-    if (matchRow !== null) {
-      usedRows.add(matchRow);
-      pairs.push({ row: rows[matchRow], filePath: fp, matched: "key" });
-    } else {
-      pairs.push({ row: null, filePath: fp, matched: "pending" });
-    }
-  }
-  const freeRows = rows.map((r,i)=>({r,i})).filter(({i})=>!usedRows.has(i)).map(({r})=>r);
-  let fi = 0;
-  for (const p of pairs) {
-    if (p.matched === "pending") { p.row = freeRows[fi] ?? null; p.matched = "order"; fi++; }
-  }
-  return pairs;
-}
+async function generarSelloPNG(d) {
+  const H = 60, PADDING = 20;
 
-// ══════════════════════════════════════════════════════════════════════════════
-//  SELLO PNG  (canvas 900×278 — diseño con franja superior + logo izquierdo)
-// ══════════════════════════════════════════════════════════════════════════════
+  const linea1 = `SERVENTEGRAL S.A E.S.P  |  NIT: 828.002.229-2  |  Radicado: ${d.radicado}  ${d.fecha}  ${d.hora}`;
 
-async function generarSelloPNG(fields, logoBuffer) {
-  const W = 900, H = 278;
+  // Medir ancho real con las fuentes que se usarán al dibujar
+  const tmp = createCanvas(1, 1).getContext("2d");
+
+  tmp.font = "bold 10px Arial";
+  const a1 = tmp.measureText(linea1).width;
+
+  tmp.font = "bold 10px Arial";
+  const wL1 = tmp.measureText("Asunto: ").width;
+  tmp.font = "10px Arial";
+  const wV1 = tmp.measureText((d.asunto  || "") + "     ").width;
+  tmp.font = "bold 10px Arial";
+  const wL2 = tmp.measureText("Anexos: ").width;
+  tmp.font = "10px Arial";
+  const wV2 = tmp.measureText((d.anexos  || "") + "     ").width;
+  tmp.font = "bold 10px Arial";
+  const wL3 = tmp.measureText("Radicado por: ").width;
+  tmp.font = "10px Arial";
+  const wV3 = tmp.measureText(d.radicadoPor || "").width;
+  const a2  = wL1 + wV1 + wL2 + wV2 + wL3 + wV3;
+
+  const W  = Math.ceil(Math.max(a1, a2)) + PADDING;
+  const sw = 40;
+  const sh = sw * (W / H);
+
   const canvas = createCanvas(W, H);
   const ctx    = canvas.getContext("2d");
+  ctx.textBaseline = "middle";
 
-  // Fondo blanco base
+  // FILA 1 (y=0, h=30): fondo blanco, bold 10px negro, centrado
   ctx.fillStyle = "#FFFFFF";
-  ctx.fillRect(0, 0, W, H);
+  ctx.fillRect(0, 0, W, 30);
+  ctx.fillStyle = "#000000";
+  ctx.font      = "bold 10px Arial";
+  ctx.textAlign = "center";
+  ctx.fillText(linea1, W / 2, 15);
 
-  // ── FRANJA SUPERIOR (y=0, h=35px, ancho completo) ────────────────────────
-  ctx.fillStyle = "#1B5E20";
-  ctx.fillRect(0, 0, W, 35);
+  // Línea separadora
+  ctx.strokeStyle = "#000000";
+  ctx.lineWidth   = 1;
+  ctx.beginPath(); ctx.moveTo(0, 30); ctx.lineTo(W, 30); ctx.stroke();
 
-  ctx.fillStyle    = "#FFFFFF";
-  ctx.textBaseline = "middle";
-
+  // FILA 2 (y=30, h=30): fondo blanco, labels bold + valores normal
+  ctx.fillStyle = "#FFFFFF";
+  ctx.fillRect(0, 30, W, 30);
+  ctx.fillStyle = "#000000";
   ctx.textAlign = "left";
-  ctx.font      = "bold 12px Arial";
-  ctx.fillText("SERVENTEGRAL S.A. E.S.P", 15, 17);
+  const y2 = 45;
 
-  ctx.textAlign = "right";
-  ctx.font      = "11px Arial";
-  ctx.fillText("NIT: 828.002.229-2", 885, 17);
+  ctx.font = "bold 10px Arial";
+  const lAsunto  = "Asunto: ";
+  const aLAsunto = ctx.measureText(lAsunto).width;
+  ctx.fillText(lAsunto, 10, y2);
+  ctx.font = "10px Arial";
+  const vAsunto  = (d.asunto || "") + "     ";
+  const aVAsunto = ctx.measureText(vAsunto).width;
+  ctx.fillText(vAsunto, 10 + aLAsunto, y2);
 
-  // Línea separadora inferior de la franja
-  ctx.strokeStyle = "rgba(255,255,255,0.25)";
+  ctx.font = "bold 10px Arial";
+  const lAnexos  = "Anexos: ";
+  const xAnexos  = 10 + aLAsunto + aVAsunto;
+  const aLAnexos = ctx.measureText(lAnexos).width;
+  ctx.fillText(lAnexos, xAnexos, y2);
+  ctx.font = "10px Arial";
+  const vAnexos  = (d.anexos || "") + "     ";
+  const aVAnexos = ctx.measureText(vAnexos).width;
+  ctx.fillText(vAnexos, xAnexos + aLAnexos, y2);
+
+  ctx.font = "bold 10px Arial";
+  const lRadPor  = "Radicado por: ";
+  const xRadPor  = xAnexos + aLAnexos + aVAnexos;
+  const aLRadPor = ctx.measureText(lRadPor).width;
+  ctx.fillText(lRadPor, xRadPor, y2);
+  ctx.font = "10px Arial";
+  ctx.fillText(d.radicadoPor || "", xRadPor + aLRadPor, y2);
+
+  // Borde exterior
+  ctx.strokeStyle = "#000000";
   ctx.lineWidth   = 1;
-  ctx.beginPath(); ctx.moveTo(0, 35); ctx.lineTo(W, 35); ctx.stroke();
+  ctx.strokeRect(0.5, 0.5, W - 1, H - 1);
 
-  // ── COLUMNA IZQUIERDA (x=0, w=200, y=35..278) ────────────────────────────
-  ctx.fillStyle = "#1B5E20";
-  ctx.fillRect(0, 35, 200, 243);
-
-  if (logoBuffer) {
-    try {
-      const img   = await loadImage(logoBuffer);
-      const maxW  = 180;
-      const maxH  = 223;
-      const scale = Math.min(maxW / img.width, maxH / img.height);
-      const iw    = img.width  * scale;
-      const ih    = img.height * scale;
-      const ix    = (200 - iw) / 2;
-      const iy    = 35 + (243 - ih) / 2;
-      ctx.drawImage(img, ix, iy, iw, ih);
-    } catch { /* logo inaccesible */ }
-  }
-
-  // Separador derecho columna izquierda
-  ctx.strokeStyle = "rgba(255,255,255,0.25)";
-  ctx.lineWidth   = 1;
-  ctx.beginPath(); ctx.moveTo(200, 35); ctx.lineTo(200, H); ctx.stroke();
-
-  // ── COLUMNA DERECHA: filas de datos (x=200..900, y=35..278) ──────────────
-  const filas = [
-    { label: "N° RADICADO:",  value: String(fields.NUMERO_RADICADO  ?? ""), h: 43, bold: true,  size: 22 },
-    { label: "FECHA:",        value: String(fields.FECHA_RECIBIDO   ?? ""), h: 40, bold: false, size: 12 },
-    { label: "RECIBIDO POR:", value: String(fields.RECIBIDO_POR     ?? ""), h: 40, bold: false, size: 12 },
-    { label: "ASUNTO:",       value: String(fields.ASUNTO           ?? ""), h: 40, bold: false, size: 12 },
-    { label: "ANEXOS:",       value: String(fields.ANEXOS           ?? ""), h: 40, bold: false, size: 12 },
-    { label: "ÁREA RESP:",    value: String(fields.AREA_RESPONSABLE ?? ""), h: 40, bold: false, size: 12 },
-  ];
-
-  const bgFilas = ["#FFFFFF", "#F1F8E9"];
-  ctx.textAlign    = "left";
-  ctx.textBaseline = "middle";
-  let ry = 35;
-
-  for (let i = 0; i < filas.length; i++) {
-    const f = filas[i];
-
-    ctx.fillStyle = bgFilas[i % 2];
-    ctx.fillRect(200, ry, 700, f.h);
-
-    ctx.fillStyle = "#1B5E20";
-    ctx.font      = "bold 10px Arial";
-    ctx.fillText(f.label, 210, ry + f.h / 2);
-
-    ctx.fillStyle = "#000000";
-    ctx.font      = `${f.bold ? "bold " : ""}${f.size}px Arial`;
-    ctx.fillText(f.value, 370, ry + f.h / 2);
-
-    ry += f.h;
-
-    ctx.strokeStyle = "#C8E6C9";
-    ctx.lineWidth   = 1;
-    ctx.beginPath(); ctx.moveTo(200, ry); ctx.lineTo(W, ry); ctx.stroke();
-  }
-
-  // ── BORDE EXTERIOR ────────────────────────────────────────────────────────
-  ctx.strokeStyle = "#1B5E20";
-  ctx.lineWidth   = 2;
-  ctx.strokeRect(1, 1, 898, 276);
-
-  return canvas.toBuffer("image/png");
+  return { pngBuffer: canvas.toBuffer("image/png"), sw, sh };
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-//  SELLO EN DOCX  (PNG flotante, rotado 90° CCW)
+//  INSERCIÓN EN PDF  — rotado 90° en margen derecho
 // ══════════════════════════════════════════════════════════════════════════════
 
-const NS = {
-  r:   "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
-  wp:  "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing",
-  a:   "http://schemas.openxmlformats.org/drawingml/2006/main",
-  pic: "http://schemas.openxmlformats.org/drawingml/2006/picture",
-};
-
-function addSelloPNGToZip(zip, pngBuffer) {
-  zip.file("word/media/sello_radicado.png", pngBuffer);
-  const relPath = "word/_rels/document.xml.rels";
-  let   relXml  = zip.file(relPath)?.asText() || "";
-  const relId   = "rIdSello001";
-  if (!relXml.includes(relId)) {
-    relXml = relXml.replace("</Relationships>",
-      `<Relationship Id="${relId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/sello_radicado.png"/></Relationships>`);
-    zip.file(relPath, relXml);
-  }
-  return relId;
-}
-
-// CX = 90pt  = 1 143 000 EMU (grosor visible post-rotación)
-// CY = 680pt = 8 636 000 EMU (alto visible post-rotación)
-// rot=16200000 = 270° CW = 90° CCW
-function buildImageXml(relId, cfg) {
-  const CX      = 1_143_000;
-  const CY      = 8_636_000;
-  const lado    = cfg?.lado === "izquierdo" ? "izquierdo" : "derecho";
-  const vOffset = cfg?.offsetVertical ?? 914400;
-
-  const posH = lado === "derecho"
-    ? `<wp:positionH relativeFrom="page"><wp:align>right</wp:align></wp:positionH>`
-    : `<wp:positionH relativeFrom="page"><wp:posOffset>0</wp:posOffset></wp:positionH>`;
-
-  return `<w:p><w:r><w:drawing>
-<wp:anchor distT="0" distB="0" distL="0" distR="0"
-           simplePos="0" relativeHeight="251658240" behindDoc="0"
-           locked="0" layoutInCell="1" allowOverlap="1"
-           xmlns:wp="${NS.wp}">
-  <wp:simplePos x="0" y="0"/>
-  ${posH}
-  <wp:positionV relativeFrom="page">
-    <wp:posOffset>${vOffset}</wp:posOffset>
-  </wp:positionV>
-  <wp:extent cx="${CX}" cy="${CY}"/>
-  <wp:effectExtent l="0" t="0" r="0" b="0"/>
-  <wp:wrapNone/>
-  <wp:docPr id="200" name="SelloRadicado"/>
-  <wp:cNvGraphicFramePr>
-    <a:graphicFrameLocks xmlns:a="${NS.a}" noChangeAspect="1"/>
-  </wp:cNvGraphicFramePr>
-  <a:graphic xmlns:a="${NS.a}">
-    <a:graphicData uri="${NS.pic}">
-      <pic:pic xmlns:pic="${NS.pic}">
-        <pic:nvPicPr>
-          <pic:cNvPr id="200" name="SelloRadicado"/>
-          <pic:cNvPicPr/>
-        </pic:nvPicPr>
-        <pic:blipFill>
-          <a:blip r:embed="${relId}" xmlns:r="${NS.r}"/>
-          <a:stretch><a:fillRect/></a:stretch>
-        </pic:blipFill>
-        <pic:spPr>
-          <a:xfrm rot="16200000">
-            <a:off x="0" y="0"/>
-            <a:ext cx="${CY}" cy="${CX}"/>
-          </a:xfrm>
-          <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
-        </pic:spPr>
-      </pic:pic>
-    </a:graphicData>
-  </a:graphic>
-</wp:anchor>
-</w:drawing></w:r></w:p>`;
-}
-
-// Ajustar márgenes: lado sello=40mm (2268 twips), resto=25mm (1418 twips)
-function ajustarMargenes(docXml, lado) {
-  const right = lado === "izquierdo" ? 1418 : 2268;
-  const left  = lado === "izquierdo" ? 2268 : 1418;
-  const nuevo = `<w:pgMar w:top="1418" w:right="${right}" w:bottom="1418" w:left="${left}" w:header="709" w:footer="709" w:gutter="0"/>`;
-
-  if (/<w:pgMar\b/.test(docXml))
-    return docXml.replace(/<w:pgMar\b[\s\S]*?\/>/, nuevo);
-  if (docXml.includes("</w:sectPr>"))
-    return docXml.replace("</w:sectPr>", `${nuevo}</w:sectPr>`);
-  return docXml;
-}
-
-function leerConfig(xlsxPath) {
-  const def = { lado: "derecho", offsetVertical: 914400 };
-  const cfgPath = path.join(path.dirname(xlsxPath), "config.json");
-  if (!fs.existsSync(cfgPath)) return def;
-  try { return { ...def, ...JSON.parse(fs.readFileSync(cfgPath, "utf8")) }; }
-  catch { return def; }
-}
-
-// Elimina cualquier sello previo usando indexOf (no regex, 100% fiable)
-function limpiarSelloAnterior(docXml) {
-  const marker = 'r:embed="rIdSello001"';
-  let idx = docXml.indexOf(marker);
-  while (idx >= 0) {
-    // Buscar <w:p hacia atrás desde idx
-    const pOpen = docXml.lastIndexOf('<w:p', idx);
-    // Buscar </w:p> hacia adelante desde idx
-    const pClose = docXml.indexOf('</w:p>', idx);
-    if (pOpen < 0 || pClose < 0) break;
-    // Eliminar todo el párrafo del sello
-    docXml = docXml.slice(0, pOpen) + docXml.slice(pClose + 6);
-    // Buscar si hay otro sello (no debería, pero por seguridad)
-    idx = docXml.indexOf(marker);
-  }
-  return docXml;
-}
-
-async function procesarDocx(fields, docFile, outDir, logoBuffer, cfg) {
-  const zip     = new PizZip(fs.readFileSync(docFile));
-  const xmlFile = zip.file("word/document.xml");
-  if (!xmlFile) return { ok: false, reason: "word/document.xml no encontrado" };
-
-  const pngBuffer = await generarSelloPNG(fields, logoBuffer);
-  const relId     = addSelloPNGToZip(zip, pngBuffer);
-
-  let docXml = xmlFile.asText();
-
-  // Eliminar sello anterior si existe
-  docXml = limpiarSelloAnterior(docXml);
-
-  docXml = ajustarMargenes(docXml, cfg?.lado ?? "derecho");
-
-  // Insertar sello al inicio de <w:body> usando indexOf (no regex)
-  const selloXml  = buildImageXml(relId, cfg);
-  const bodyIdx   = docXml.indexOf('<w:body');
-  if (bodyIdx < 0) return { ok: false, reason: "no se encontró <w:body> en el XML" };
-  const bodyClose = docXml.indexOf('>', bodyIdx);      // cierre del tag <w:body...>
-  docXml = docXml.slice(0, bodyClose + 1) + selloXml + docXml.slice(bodyClose + 1);
-
-  zip.file("word/document.xml", docXml);
-  const outFile = path.join(outDir, path.basename(docFile, ".docx") + "_radicado.docx");
-  fs.writeFileSync(outFile, zip.generate({ type: "nodebuffer", compression: "DEFLATE" }));
-  return { ok: true, outFile };
-}
-
-// ══════════════════════════════════════════════════════════════════════════════
-//  SELLO EN PDF  (incrusta el PNG aprobado 900×278 en la PRIMERA página)
-// ══════════════════════════════════════════════════════════════════════════════
-
-async function procesarPDF(fields, docFile, outDir, logoBuffer, cfg) {
+async function procesarPDF(datosRadicado, docFile, outDir) {
   const { PDFDocument, degrees, PDFName } = require("pdf-lib");
 
-  const pdfDoc   = await PDFDocument.load(fs.readFileSync(docFile));
-  const pngBuffer = await generarSelloPNG(fields, logoBuffer);
-  const pngImage  = await pdfDoc.embedPng(pngBuffer);
+  const fileBytes = fs.readFileSync(docFile);
+  const pdfDoc   = await PDFDocument.load(fileBytes);
+  const { pngBuffer, sw, sh } = await generarSelloPNG(datosRadicado);
+  const pngImage = await pdfDoc.embedPng(pngBuffer);
 
-  // Siempre primera página
   const page = pdfDoc.getPages()[0];
   const { width: pw, height: ph } = page.getSize();
+  const sy = (ph - sh) / 2;
 
-  const lado = cfg?.lado === "izquierdo" ? "izquierdo" : "derecho";
+  // Cargar original en doc separado → evita auto-referencia al incrustar como XObject
+  const pdfOrig = await PDFDocument.load(fileBytes);
+  const [paginaOrig] = await pdfDoc.embedPdf(pdfOrig, [0]);
 
-  // Dimensiones del sello — idénticas para ambos lados
-  const sw = 1486000 / 12700;   // ≈ 117 pt (grosor, ratio 900/278 = 3.24)
-  const sh = 4800000 / 12700;   // ≈ 378 pt (largo)
-  const sy = (ph - sh) / 2;     // centrado vertical
+  page.node.delete(PDFName.of("CropBox"));
+  page.setSize(pw + sw, ph);
+  page.node.set(PDFName.of("Contents"), pdfDoc.context.obj([]));
 
-  if (lado === "derecho") {
-    // Ampliar a la derecha — solo coordenadas positivas
-    page.setSize(pw + sw, ph);
-    page.node.delete(PDFName.of("CropBox"));
-    page.drawImage(pngImage, {
-      x: pw + sw,
-      y: sy,
-      width:  sh,
-      height: sw,
-      rotate: degrees(90),
-    });
-  } else {
-    // IZQUIERDO: cargar el PDF original en un documento SEPARADO para incrustar
-    // la página como Form XObject — evita auto-referencia (que causa 3× render).
-    const pdfOrig = await PDFDocument.load(fs.readFileSync(docFile));
-    const [paginaOrig] = await pdfDoc.embedPdf(pdfOrig, [0]);
+  // Contenido original desplazado hacia la derecha para hacer hueco al sello
+  page.drawPage(paginaOrig, { x: sw, y: 0, width: pw, height: ph });
 
-    page.node.delete(PDFName.of("CropBox"));
-    page.setSize(pw + sw, ph);
-    page.node.set(PDFName.of("Contents"), pdfDoc.context.obj([]));
-    // Contenido original desplazado sw hacia la derecha
-    page.drawPage(paginaOrig, { x: sw, y: 0, width: pw, height: ph });
-    // Sello: pivot en x=sw, rotate 90°CCW → ocupa [0, sw]
-    page.drawImage(pngImage, {
-      x: sw,
-      y: sy,
-      width:  sh,
-      height: sw,
-      rotate: degrees(90),
-    });
-  }
+  // Sello en lado izquierdo
+  page.drawImage(pngImage, {
+    x:      sw,
+    y:      sy,
+    width:  sh,
+    height: sw,
+    rotate: degrees(90),
+  });
 
   const outFile = path.join(outDir, path.basename(docFile, ".pdf") + "_radicado.pdf");
   fs.writeFileSync(outFile, await pdfDoc.save());
@@ -418,60 +160,14 @@ async function procesarPDF(fields, docFile, outDir, logoBuffer, cfg) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-//  FUNCIÓN PRINCIPAL EXPORTADA
+//  FUNCIÓN PRINCIPAL — recibe datosRadicado directamente
 // ══════════════════════════════════════════════════════════════════════════════
 
-async function processAll({ xlsxPath, docsFiles, outDir, logoPath, cfg: cfgPassed }, onProgress) {
+async function processAll({ datosRadicado, docsFiles, outDir }, onProgress) {
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
 
-  console.log("=== PROCESSOR v3 (900x278, solo PDF) ===");
-  onProgress({ type: "info", msg: "=== Sello v3 — solo PDF, canvas 900×278px, primera página ===" });
-
-  const cfg = cfgPassed ?? leerConfig(xlsxPath);
-  onProgress({ type: "info", msg: `Config: margen ${cfg.lado}, ${(cfg.offsetVertical/36000/10).toFixed(1)} cm desde arriba` });
-
-  const resolvedLogo = getLogoPath(logoPath);
-  let logoBuffer = null;
-  if (resolvedLogo) {
-    logoBuffer = fs.readFileSync(resolvedLogo);
-    onProgress({ type: "info", msg: `Logo: ${path.basename(resolvedLogo)}` });
-  } else {
-    onProgress({ type: "warn", msg: "logo.png no encontrado — el sello no tendrá logo." });
-  }
-
-  onProgress({ type: "info", msg: `Archivos seleccionados: ${docsFiles.length}` });
-
-  // Leer Excel crudo — nombres exactos de columna
-  const wbRaw      = XLSX.readFile(xlsxPath);
-  const rawRows    = XLSX.utils.sheet_to_json(wbRaw.Sheets[wbRaw.SheetNames[0]], { defval: "" });
-  const filasValidas = rawRows.filter(r => r["RADICADO"] && !isNaN(Number(r["RADICADO"])));
-  const ultimaFila   = filasValidas[filasValidas.length - 1] ?? {};
-  const ultimoNum    = filasValidas.length > 0 ? Number(ultimaFila["RADICADO"]) : 0;
-  onProgress({ type: "info", msg: `Último radicado en Excel: ${ultimoNum}` });
-
-  // Campos del sello — acceso directo con nombres exactos del Excel
-  const radicado    = String(ultimoNum).padStart(4, "0");
-  const recibidoPor = String(ultimaFila[" QUEN RECIBIO"]                      || "").trim();
-  const asunto      = String(ultimaFila["ASUNTO"]                             || "").trim();
-  const anexos      = String(ultimaFila["ANEXOS "]                            ?? "").trim();
-  const fecha       = excelDateToString(ultimaFila["FECHA DE INGRESO DE LA SOLICITUD"]);
-  const areaResp    = String(ultimaFila["PROCESO  RESPONSABLE"]               || "").trim();
-
-  console.log("radicado:", radicado);
-  console.log("fecha:", fecha);
-  console.log("recibidoPor:", recibidoPor);
-  console.log("asunto:", asunto);
-  console.log("anexos:", anexos);
-  console.log("areaResp:", areaResp);
-
-  const fields = {
-    NUMERO_RADICADO:  radicado,
-    RECIBIDO_POR:     recibidoPor,
-    ASUNTO:           asunto,
-    ANEXOS:           anexos,
-    AREA_RESPONSABLE: areaResp,
-    FECHA_RECIBIDO:   fecha,
-  };
+  onProgress({ type: "info", msg: `Radicado: ${datosRadicado.radicado} — ${datosRadicado.asunto}` });
+  onProgress({ type: "info", msg: `Archivos a procesar: ${docsFiles.length}` });
 
   let ok = 0, fail = 0;
 
@@ -482,21 +178,22 @@ async function processAll({ xlsxPath, docsFiles, outDir, logoPath, cfg: cfgPasse
     const tipo   = path.extname(filePath).toLowerCase();
     try {
       let result;
-      if (tipo === ".pdf") result = await procesarPDF(fields, filePath, outDir, logoBuffer, cfg);
-      else                 result = { ok: false, reason: `Solo PDF — ignorado (${tipo})` };
+      if (tipo === ".pdf") result = await procesarPDF(datosRadicado, filePath, outDir);
+      else                 result = { ok: false, reason: `Tipo no soportado (${tipo})` };
 
       if (result.ok) {
         ok++;
-        onProgress({ type: "ok", msg: `Procesado: ${nombre} — Radicado ${radicado}` });
+        onProgress({ type: "ok", msg: `Procesado: ${nombre}` });
       } else {
         fail++;
         onProgress({ type: "error", msg: `Omitido: ${nombre} — ${result.reason}` });
       }
     } catch (err) {
-      fail++; onProgress({ type: "error", msg: `ERROR en ${nombre}: ${err.message}` });
+      fail++;
+      onProgress({ type: "error", msg: `ERROR en ${nombre}: ${err.message}` });
     }
   }
   return { ok, fail, total: docsFiles.length };
 }
 
-module.exports = { processAll };
+module.exports = { processAll, excelDateToString, excelTimeToString };

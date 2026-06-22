@@ -2,8 +2,9 @@
 
 const { app, BrowserWindow, ipcMain, dialog, shell } = require("electron");
 const path = require("path");
-const fs = require("fs");
-const { processAll } = require("./processor");
+const fs   = require("fs");
+const XLSX = require("xlsx");
+const { processAll, excelDateToString, excelTimeToString } = require("./processor");
 
 let win;
 
@@ -125,6 +126,40 @@ ipcMain.handle("save-config", async (_, config) => {
     return { ok: true };
   } catch (err) {
     return { ok: false, error: err.message };
+  }
+});
+
+// ── IPC: buscar radicado en Excel ──────────────────────────────────────────
+ipcMain.handle("buscar-radicado", async (_, { numero, rutaExcel }) => {
+  try {
+    const wb   = XLSX.readFile(rutaExcel);
+    const ws   = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
+
+    const limpias = rows.map(row => {
+      const r = {};
+      Object.keys(row).forEach(k => {
+        r[k.trim()] = typeof row[k] === "string" ? row[k].trim() : row[k];
+      });
+      return r;
+    });
+
+    const fila = limpias.find(r => String(r["RADICADO"]).trim() === String(numero).trim());
+    if (!fila) return { encontrado: false };
+
+    return {
+      encontrado: true,
+      datos: {
+        radicado:    String(fila["RADICADO"]).padStart(4, "0"),
+        fecha:       excelDateToString(fila["FECHA DE INGRESO DE LA SOLICITUD"]),
+        hora:        excelTimeToString(fila["HORA"]),
+        asunto:      String(fila["ASUNTO"]        || ""),
+        anexos:      String(fila["ANEXOS"]        || ""),
+        radicadoPor: String(fila["RADICADO POR"]  || ""),
+      }
+    };
+  } catch (e) {
+    return { encontrado: false, error: e.message };
   }
 });
 

@@ -67,7 +67,9 @@
         <input type="text" id="f-rad"  value="0001"            oninput="debounceDraw()">
         <label>Fecha</label>
         <input type="text" id="f-fec"  value="02/01/2026"      oninput="debounceDraw()">
-        <label>Recibido por</label>
+        <label>Hora</label>
+        <input type="text" id="f-hora" value="08:00"           oninput="debounceDraw()">
+        <label>Radicado por</label>
         <input type="text" id="f-rec"  value="LAURA GIRALDO"   oninput="debounceDraw()">
         <label>Asunto</label>
         <input type="text" id="f-asu"  value="DESAFILIACIONES" oninput="debounceDraw()">
@@ -105,8 +107,8 @@
       <canvas id="a4-canvas" width="420" height="594"></canvas>
     </div>
     <div id="strip-wrap">
-      <canvas id="stamp-canvas" width="900" height="278"></canvas>
-      <span id="strip-label">Vista real del sello (900 × 278 px)</span>
+      <canvas id="stamp-canvas" width="900" height="313"></canvas>
+      <span id="strip-label">Vista real del sello (900 × 313 px)</span>
     </div>
   </div>
 
@@ -126,7 +128,7 @@ _auto.src = "logo.png";
 
 // ── Dibujar sello (diseño aprobado 900×278) ──────────────────────────────────
 function drawStamp(ctx, data, logo) {
-  const W = 900, H = 278;
+  const W = 900, H = 313;
   ctx.clearRect(0, 0, W, H);
   ctx.fillStyle = "#FFFFFF";
   ctx.fillRect(0, 0, W, H);
@@ -144,7 +146,7 @@ function drawStamp(ctx, data, logo) {
 
   // Columna izquierda (logo)
   ctx.fillStyle = "#1B5E20";
-  ctx.fillRect(0, 35, 200, 243);
+  ctx.fillRect(0, 35, 200, 278);
   if (logo) {
     const maxW = 180, maxH = 223;
     const scale = Math.min(maxW/logo.width, maxH/logo.height);
@@ -156,12 +158,13 @@ function drawStamp(ctx, data, logo) {
 
   // Filas de datos
   const filas = [
-    {label:"N° RADICADO:",  value:data.rad,  h:43, bold:true,  size:22},
-    {label:"FECHA:",        value:data.fec,  h:40, bold:false, size:12},
-    {label:"RECIBIDO POR:", value:data.rec,  h:40, bold:false, size:12},
-    {label:"ASUNTO:",       value:data.asu,  h:40, bold:false, size:12},
-    {label:"ANEXOS:",       value:data.ane,  h:40, bold:false, size:12},
-    {label:"ÁREA RESP:",    value:data.area, h:40, bold:false, size:12},
+    {label:"N° RADICADO:",         value:data.rad,  h:50, bold:true,  size:22},
+    {label:"FECHA:",               value:data.fec,  h:38, bold:false, size:12},
+    {label:"HORA:",                value:data.hora, h:38, bold:false, size:12},
+    {label:"RADICADO POR:",        value:data.rec,  h:38, bold:false, size:12},
+    {label:"ASUNTO:",              value:data.asu,  h:38, bold:false, size:12},
+    {label:"ANEXOS:",              value:data.ane,  h:38, bold:false, size:12},
+    {label:"PROCESO RESPONSABLE:", value:data.area, h:38, bold:false, size:12},
   ];
   const bgFilas = ["#FFFFFF","#F1F8E9"];
   ctx.textAlign = "left"; ctx.textBaseline = "middle";
@@ -180,7 +183,7 @@ function drawStamp(ctx, data, logo) {
 
   // Borde exterior
   ctx.strokeStyle = "#1B5E20"; ctx.lineWidth = 2;
-  ctx.strokeRect(1, 1, 898, 276);
+  ctx.strokeRect(1, 1, 898, 311);
 }
 
 // ── Dibujar hoja A4 ───────────────────────────────────────────────────────────
@@ -190,7 +193,7 @@ function drawA4(stampCanvas) {
   const SC  = 2, PW = 420, PH = 594;
 
   // Dimensiones físicas del sello (EMU→mm→px @2px/mm)
-  const SW = (1143000/36000)*SC;   // ≈ 63.5 px
+  const SW = (1287000/36000)*SC;   // ≈ 71.5 px (proporcional a 313px)
   const SH = (8636000/36000)*SC;   // ≈ 480 px
 
   ctx.clearRect(0,0,PW,PH);
@@ -237,6 +240,7 @@ function drawAll() {
   const data = {
     rad:  document.getElementById("f-rad").value,
     fec:  document.getElementById("f-fec").value,
+    hora: document.getElementById("f-hora").value,
     rec:  document.getElementById("f-rec").value,
     asu:  document.getElementById("f-asu").value,
     ane:  document.getElementById("f-ane").value,

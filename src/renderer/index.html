@@ -70,22 +70,23 @@
     </div>
 
     <div class="divider"></div>
-    <div class="section-label">Logo empresa</div>
+    <div class="section-label">Radicado a sellar</div>
 
     <div class="field">
-      <label>Logo PNG (para el sello)</label>
+      <label>N° de Radicado</label>
       <div class="field-row">
-        <input type="text" id="inp-logo" readonly placeholder="logo.png (opcional)…"/>
-        <button class="btn-pick" id="btn-logo" title="Seleccionar logo">🖼</button>
+        <input type="text" id="inp-radicado" placeholder="Ej: 992"
+               style="font-size:16px;font-weight:bold;text-align:center;cursor:text"/>
+        <button class="btn-pick" id="btn-buscar" title="Buscar en Excel">🔍</button>
       </div>
     </div>
 
-    <div style="flex:1"></div>
-
-    <div class="hint-preview" id="hint-preview">
-      <span>📐</span>
-      <span>Ajusta la posición del sello en <button class="hint-link" id="hint-go-preview">👁 Preview</button> antes de procesar.</span>
+    <div id="datos-encontrados" style="display:none;
+         background:var(--green-pale);border:1px solid var(--green-light);
+         border-radius:6px;padding:8px 10px;font-size:11.5px;line-height:1.8">
     </div>
+
+    <div style="flex:1"></div>
 
     <div class="progress-wrap">
       <div class="progress-bar-track">

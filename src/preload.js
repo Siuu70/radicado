@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld("api", {
   selectLogo:        () => ipcRenderer.invoke("select-logo"),
   openFolder:        (p) => ipcRenderer.invoke("open-folder", p),
   getResourcePath:   () => ipcRenderer.invoke("get-resource-path"),
+  buscarRadicado:    (opts) => ipcRenderer.invoke("buscar-radicado", opts),
   processDocuments:  (opts) => ipcRenderer.invoke("process-documents", opts),
   onProgress:        (cb) => ipcRenderer.on("processing-progress", (_, data) => cb(data)),
   removeProgressListener: () => ipcRenderer.removeAllListeners("processing-progress"),

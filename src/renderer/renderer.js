@@ -2,23 +2,23 @@
 
 // ── Estado ──────────────────────────────────────────────────────────────────
 const state = {
-  excel:     null,  // ruta al .xlsx
-  docsFiles: [],    // array de rutas absolutas (.docx o .pdf)
-  out:       null,  // carpeta de salida
-  logo:      null,  // ruta logo PNG
-  running:   false,
+  excel:         null,
+  docsFiles:     [],
+  out:           null,
+  datosRadicado: null,
+  running:       false,
 };
 
 // ── Refs DOM ────────────────────────────────────────────────────────────────
 const inpExcel      = document.getElementById("inp-excel");
 const inpDocsFiles  = document.getElementById("inp-docs-files");
 const inpOut        = document.getElementById("inp-out");
-const inpLogo       = document.getElementById("inp-logo");
+const inpRadicado   = document.getElementById("inp-radicado");
 
 const btnExcel      = document.getElementById("btn-excel");
 const btnDocsFiles  = document.getElementById("btn-docs-files");
 const btnOut        = document.getElementById("btn-out");
-const btnLogo       = document.getElementById("btn-logo");
+const btnBuscar     = document.getElementById("btn-buscar");
 const btnProcess    = document.getElementById("btn-process");
 const btnClear      = document.getElementById("btn-clear");
 const btnOpenOut    = document.getElementById("btn-open-out");
@@ -66,45 +66,55 @@ function shortPath(p) {
 function ext(p) { return p.split(".").pop().toLowerCase(); }
 
 function validateReady() {
-  btnProcess.disabled = state.running || !state.excel || state.docsFiles.length === 0 || !state.out;
+  btnProcess.disabled = state.running || !state.excel || state.docsFiles.length === 0
+                        || !state.out || !state.datosRadicado;
 }
 
-// ── Logo en header ──────────────────────────────────────────────────────────
-function updateHeaderLogo(logoPath) {
-  if (!logoPath) return;
-  const wrap = document.getElementById("header-logo-wrap");
-  const placeholder = document.getElementById("header-placeholder");
-  let img = wrap.querySelector("img");
-  if (!img) {
-    img = document.createElement("img");
-    img.id = "header-logo";
-    wrap.appendChild(img);
+// ── Buscar radicado en Excel ─────────────────────────────────────────────────
+async function buscarRadicado() {
+  const numero = inpRadicado.value.trim();
+  const divDatos = document.getElementById("datos-encontrados");
+
+  if (!numero) {
+    divDatos.style.display = "block";
+    divDatos.style.background = "var(--red-light)";
+    divDatos.style.borderColor = "#FFCDD2";
+    divDatos.innerHTML = "✗ Ingresa un número de radicado.";
+    return;
   }
-  img.style.display = "block";
-  img.src = "file:///" + logoPath.replace(/\\/g, "/");
-  img.onerror = () => { img.style.display = "none"; placeholder.style.display = "flex"; };
-  placeholder.style.display = "none";
-}
+  if (!state.excel) {
+    divDatos.style.display = "block";
+    divDatos.style.background = "var(--red-light)";
+    divDatos.style.borderColor = "#FFCDD2";
+    divDatos.innerHTML = "✗ Primero selecciona el archivo Excel.";
+    return;
+  }
 
-async function loadDefaultLogo() {
-  // Sin logo guardado: el processor usa el logo.png incluido en el exe automáticamente.
-  // Solo intentamos mostrarlo en el header para feedback visual.
-  state.logo = null;
-  inpLogo.value = "Logo incluido (por defecto)";
-  const resPath = await window.api.getResourcePath();
-  const sep = resPath.includes("/") ? "/" : "\\";
-  updateHeaderLogo(resPath + sep + "logo.png");
-}
+  divDatos.style.display = "block";
+  divDatos.style.background = "var(--green-pale)";
+  divDatos.style.borderColor = "var(--green-light)";
+  divDatos.innerHTML = "⏳ Buscando…";
 
-// Actualiza el logo cuando se cambia el Excel (busca logo.png junto al xlsx)
-function tryLogoFromExcelDir(excelPath) {
-  if (!excelPath) return;
-  const sep = excelPath.includes("/") ? "/" : "\\";
-  const dir = excelPath.split(sep).slice(0,-1).join(sep);
-  const candidate = dir + sep + "logo.png";
-  state.logo = candidate;
-  inpLogo.value = shortPath(candidate);
-  updateHeaderLogo(candidate);
+  const res = await window.api.buscarRadicado({ numero, rutaExcel: state.excel });
+
+  if (res.encontrado) {
+    state.datosRadicado = res.datos;
+    const d = res.datos;
+    divDatos.innerHTML =
+      `<strong style="color:var(--green-dark)">✓ Radicado encontrado</strong><br>` +
+      `📄 N°: <b>${d.radicado}</b> &nbsp;|&nbsp; 📅 ${d.fecha} &nbsp;|&nbsp; 🕐 ${d.hora}<br>` +
+      `📝 Asunto: ${d.asunto}<br>` +
+      `📎 Anexos: ${d.anexos}<br>` +
+      `👤 Radicado por: ${d.radicadoPor}`;
+    log(`Radicado ${d.radicado} encontrado: ${d.asunto}`, "ok");
+  } else {
+    state.datosRadicado = null;
+    divDatos.style.background = "var(--red-light)";
+    divDatos.style.borderColor = "#FFCDD2";
+    divDatos.innerHTML = `✗ Radicado <b>${numero}</b> no encontrado en el Excel.`;
+    log(`Radicado ${numero} no encontrado.`, "error");
+  }
+  validateReady();
 }
 
 // ── Render lista de archivos ─────────────────────────────────────────────────
@@ -156,12 +166,12 @@ btnExcel.addEventListener("click", async () => {
     state.excel = p;
     inpExcel.value = shortPath(p);
     log(`Excel: ${p}`, "info");
-    // Buscar logo.png en la misma carpeta del Excel
-    tryLogoFromExcelDir(p);
-    pvSyncLogo(state.logo);
     validateReady();
   }
 });
+
+btnBuscar.addEventListener("click", buscarRadicado);
+inpRadicado.addEventListener("keydown", (e) => { if (e.key === "Enter") buscarRadicado(); });
 
 btnDocsFiles.addEventListener("click", async () => {
   const files = await window.api.selectDocFiles();
@@ -195,17 +205,6 @@ btnOut.addEventListener("click", async () => {
   }
 });
 
-btnLogo.addEventListener("click", async () => {
-  const p = await window.api.selectLogo();
-  if (p) {
-    state.logo = p;
-    inpLogo.value = shortPath(p);
-    updateHeaderLogo(p);
-    pvSyncLogo(p);
-    await window.api.saveConfig({ ...pvCfg, logoPath: p });
-    log(`Logo guardado: ${p}`, "info");
-  }
-});
 
 // ── Limpiar log ──────────────────────────────────────────────────────────────
 btnClear.addEventListener("click", () => {
@@ -241,11 +240,9 @@ btnProcess.addEventListener("click", async () => {
   });
 
   const result = await window.api.processDocuments({
-    xlsxPath:  state.excel,
-    docsFiles: state.docsFiles,
-    outDir:    state.out,
-    logoPath:  state.logo,
-    cfg:       pvCfg,
+    datosRadicado: state.datosRadicado,
+    docsFiles:     state.docsFiles,
+    outDir:        state.out,
   });
 
   window.api.removeProgressListener();
@@ -485,13 +482,5 @@ function pvSyncLogo(logoPath) {
     (pvCfg.offsetVertical / 36000 / 10).toFixed(1) + " cm";
   pvSetSide(pvCfg.lado);
 
-  if (savedCfg.logoPath) {
-    state.logo = savedCfg.logoPath;
-    inpLogo.value = shortPath(savedCfg.logoPath);
-    updateHeaderLogo(savedCfg.logoPath);
-    pvSyncLogo(savedCfg.logoPath);
-  } else {
-    await loadDefaultLogo();
-  }
   validateReady();
 })();
