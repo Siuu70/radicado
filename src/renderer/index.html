@@ -22,6 +22,7 @@
   <div class="header-tabs">
     <button class="tab-btn active" id="tab-btn-procesar">▶ Procesar</button>
     <button class="tab-btn" id="tab-btn-preview">👁 Preview</button>
+    <button class="tab-btn" id="tab-btn-historial">📋 Historial</button>
   </div>
 </header>
 
@@ -174,6 +175,48 @@
     </div>
   </div>
 
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     TAB: HISTORIAL
+══════════════════════════════════════════════════════════════════════ -->
+<div class="tab-panel historial-panel" id="panel-historial">
+
+  <div class="historial-toolbar">
+    <input type="text" id="hist-search" placeholder="🔍 Buscar por radicado o asunto…"/>
+    <button class="btn-hist-export" id="btn-hist-export">📥 Exportar a Excel</button>
+    <button class="btn-hist-clear"  id="btn-hist-clear" >🗑 Limpiar historial</button>
+  </div>
+
+  <div class="historial-table-wrap">
+    <table class="historial-table" id="hist-table">
+      <thead>
+        <tr>
+          <th>N° Radicado</th>
+          <th>Asunto</th>
+          <th>PDF sellado</th>
+          <th>Fecha / Hora sellado</th>
+          <th>Procesado por</th>
+        </tr>
+      </thead>
+      <tbody id="hist-tbody"></tbody>
+    </table>
+    <div class="historial-empty" id="hist-empty">Sin registros en el historial.</div>
+  </div>
+
+</div>
+
+<!-- Modal: radicado duplicado -->
+<div class="modal-overlay" id="modal-dup" style="display:none">
+  <div class="modal-box">
+    <div class="modal-icon">⚠</div>
+    <div class="modal-title">Radicado ya sellado</div>
+    <div class="modal-msg" id="modal-dup-msg"></div>
+    <div class="modal-btns">
+      <button class="btn-modal-cancel" id="modal-dup-cancel">Cancelar</button>
+      <button class="btn-modal-ok"     id="modal-dup-ok"    >Continuar de todos modos</button>
+    </div>
+  </div>
 </div>
 
 <script src="renderer.js"></script>

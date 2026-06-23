@@ -538,3 +538,198 @@ header .header-text p {
   width: 100%;
 }
 .pv-stamp-label { font-size: 10px; color: #888; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   HISTORIAL TAB
+══════════════════════════════════════════════════════════════════════════ */
+.historial-panel {
+  flex-direction: column;
+  background: var(--green-pale);
+  padding: 0;
+  overflow: hidden;
+}
+
+.historial-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: var(--white);
+  border-bottom: 1px solid var(--green-light);
+  flex-shrink: 0;
+}
+
+.historial-toolbar input[type=text] {
+  flex: 1;
+  border: 1.5px solid #C8E6C9;
+  border-radius: 5px;
+  padding: 6px 10px;
+  font-size: 13px;
+  color: var(--text-dark);
+  background: var(--green-pale);
+  outline: none;
+}
+.historial-toolbar input[type=text]:focus { border-color: var(--green-dark); }
+
+.btn-hist-export {
+  padding: 6px 14px;
+  border: 1.5px solid var(--green-dark);
+  border-radius: 5px;
+  background: var(--white);
+  color: var(--green-dark);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s;
+  flex-shrink: 0;
+}
+.btn-hist-export:hover { background: var(--green-bg); }
+
+.btn-hist-clear {
+  padding: 6px 14px;
+  border: 1.5px solid #FFCDD2;
+  border-radius: 5px;
+  background: var(--red-light);
+  color: var(--red-accent);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s;
+  flex-shrink: 0;
+}
+.btn-hist-clear:hover { background: #FFCDD2; }
+
+.historial-table-wrap {
+  flex: 1;
+  overflow: auto;
+  padding: 12px 16px;
+}
+
+.historial-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  background: var(--white);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.historial-table thead {
+  background: linear-gradient(135deg, var(--green-dark), #155724);
+  color: var(--white);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.historial-table th {
+  padding: 10px 13px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .5px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.historial-table tbody tr { border-bottom: 1px solid #E8F5E9; transition: background .12s; }
+.historial-table tbody tr:hover { background: var(--green-pale); }
+.historial-table tbody tr:last-child { border-bottom: none; }
+
+.historial-table td {
+  padding: 9px 13px;
+  color: var(--text-dark);
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.historial-table td.rad-cell {
+  font-weight: 700;
+  color: var(--green-dark);
+  font-size: 13px;
+}
+
+.historial-empty {
+  text-align: center;
+  padding: 40px;
+  color: var(--text-light);
+  font-size: 13px;
+  display: none;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   MODAL DUPLICADO
+══════════════════════════════════════════════════════════════════════════ */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.modal-box {
+  background: var(--white);
+  border-radius: 10px;
+  padding: 28px 32px;
+  max-width: 380px;
+  width: 90%;
+  box-shadow: 0 8px 32px rgba(0,0,0,.28);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.modal-icon { font-size: 38px; }
+
+.modal-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-dark);
+}
+
+.modal-msg {
+  font-size: 13px;
+  color: var(--text-mid);
+  line-height: 1.6;
+}
+
+.modal-btns {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.btn-modal-cancel {
+  flex: 1;
+  padding: 9px;
+  border: 1.5px solid #C8E6C9;
+  border-radius: 6px;
+  background: var(--white);
+  color: var(--text-mid);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s;
+}
+.btn-modal-cancel:hover { background: var(--green-pale); }
+
+.btn-modal-ok {
+  flex: 1;
+  padding: 9px;
+  border: none;
+  border-radius: 6px;
+  background: var(--green-dark);
+  color: var(--white);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background .15s;
+}
+.btn-modal-ok:hover { background: #155724; }

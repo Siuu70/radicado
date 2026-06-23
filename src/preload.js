@@ -15,4 +15,7 @@ contextBridge.exposeInMainWorld("api", {
   removeProgressListener: () => ipcRenderer.removeAllListeners("processing-progress"),
   getConfig:         () => ipcRenderer.invoke("get-config"),
   saveConfig:        (config) => ipcRenderer.invoke("save-config", config),
+  leerHistorial:     () => ipcRenderer.invoke("leer-historial"),
+  limpiarHistorial:  () => ipcRenderer.invoke("limpiar-historial"),
+  exportarHistorial: () => ipcRenderer.invoke("exportar-historial"),
 });

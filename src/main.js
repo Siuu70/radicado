@@ -3,10 +3,12 @@
 const { app, BrowserWindow, ipcMain, dialog, shell } = require("electron");
 const path = require("path");
 const fs   = require("fs");
+const os   = require("os");
 const XLSX = require("xlsx");
 const { processAll, excelDateToString, excelTimeToString } = require("./processor");
 
 let win;
+let historialPath; // se define después de que app esté lista
 
 function createWindow() {
   win = new BrowserWindow({
@@ -29,7 +31,8 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
-  // Primera ejecución: copiar config.json desde resources a userData
+  historialPath = path.join(app.getPath("userData"), "historial.json");
+
   const userCfg = path.join(app.getPath("userData"), "config.json");
   if (!fs.existsSync(userCfg)) {
     const base   = app.isPackaged ? process.resourcesPath : path.join(__dirname, "..");
@@ -38,6 +41,17 @@ app.whenReady().then(() => {
   }
   createWindow();
 });
+
+// ── Historial helpers ──────────────────────────────────────────────────────
+function guardarHistorial(registro) {
+  let historial = [];
+  try {
+    if (fs.existsSync(historialPath))
+      historial = JSON.parse(fs.readFileSync(historialPath, "utf8"));
+  } catch { /* primer uso */ }
+  historial.unshift(registro);
+  fs.writeFileSync(historialPath, JSON.stringify(historial, null, 2), "utf8");
+}
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
@@ -163,12 +177,60 @@ ipcMain.handle("buscar-radicado", async (_, { numero, rutaExcel }) => {
   }
 });
 
+// ── IPC: historial ─────────────────────────────────────────────────────────
+ipcMain.handle("leer-historial", () => {
+  try {
+    if (fs.existsSync(historialPath))
+      return JSON.parse(fs.readFileSync(historialPath, "utf8"));
+    return [];
+  } catch { return []; }
+});
+
+ipcMain.handle("limpiar-historial", () => {
+  try { fs.writeFileSync(historialPath, "[]", "utf8"); return true; }
+  catch { return false; }
+});
+
+ipcMain.handle("exportar-historial", async () => {
+  try {
+    let historial = [];
+    if (fs.existsSync(historialPath))
+      historial = JSON.parse(fs.readFileSync(historialPath, "utf8"));
+
+    const ws = XLSX.utils.json_to_sheet(historial.map(h => ({
+      "N° Radicado":   h.radicado,
+      "Asunto":        h.asunto,
+      "PDF Original":  h.pdf_original,
+      "PDF Sellado":   h.pdf_sellado,
+      "Fecha Sellado": h.fecha_sellado,
+      "Hora Sellado":  h.hora_sellado,
+      "Procesado por": h.procesado_por,
+    })));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Historial");
+
+    const res = await dialog.showSaveDialog(win, {
+      title: "Exportar historial",
+      defaultPath: "historial_radicados.xlsx",
+      filters: [{ name: "Excel", extensions: ["xlsx"] }],
+    });
+    if (res.canceled) return { ok: false };
+    XLSX.writeFile(wb, res.filePath);
+    return { ok: true, filePath: res.filePath };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
 // ── IPC: procesar documentos ───────────────────────────────────────────────
 ipcMain.handle("process-documents", async (event, opts) => {
   try {
     const result = await processAll(opts, (progress) => {
       event.sender.send("processing-progress", progress);
     });
+    // Guardar entradas en historial
+    for (const entrada of result.historialEntries || [])
+      guardarHistorial(entrada);
     return { success: true, ...result };
   } catch (err) {
     return { success: false, error: err.message };

@@ -70,6 +70,88 @@ function validateReady() {
                         || !state.out || !state.datosRadicado;
 }
 
+// ── Historial ─────────────────────────────────────────────────────────────────
+let historialData = [];
+
+async function cargarHistorial() {
+  historialData = await window.api.leerHistorial() || [];
+  renderHistorial(historialData);
+}
+
+function renderHistorial(data) {
+  const tbody    = document.getElementById("hist-tbody");
+  const emptyEl  = document.getElementById("hist-empty");
+  tbody.innerHTML = "";
+
+  if (!data || data.length === 0) {
+    emptyEl.style.display = "block";
+    return;
+  }
+  emptyEl.style.display = "none";
+
+  data.forEach(h => {
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+      `<td class="rad-cell">${h.radicado || ""}</td>` +
+      `<td>${h.asunto || ""}</td>` +
+      `<td title="${h.pdf_sellado || ""}">${h.pdf_sellado || ""}</td>` +
+      `<td>${h.fecha_sellado || ""} ${h.hora_sellado || ""}</td>` +
+      `<td>${h.procesado_por || ""}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function filtrarHistorial(texto) {
+  const q = texto.toLowerCase();
+  if (!q) return renderHistorial(historialData);
+  renderHistorial(historialData.filter(h =>
+    (h.radicado || "").toLowerCase().includes(q) ||
+    (h.asunto   || "").toLowerCase().includes(q)
+  ));
+}
+
+document.getElementById("hist-search").addEventListener("input", function () {
+  filtrarHistorial(this.value);
+});
+
+document.getElementById("btn-hist-export").addEventListener("click", async () => {
+  const res = await window.api.exportarHistorial();
+  if (res.ok) log(`Historial exportado: ${res.filePath}`, "ok");
+  else if (res.error) log(`Error exportando historial: ${res.error}`, "error");
+});
+
+document.getElementById("btn-hist-clear").addEventListener("click", async () => {
+  if (!confirm("¿Limpiar todo el historial? Esta acción no se puede deshacer.")) return;
+  await window.api.limpiarHistorial();
+  historialData = [];
+  renderHistorial([]);
+  log("Historial limpiado.", "info");
+});
+
+// ── Modal duplicado ────────────────────────────────────────────────────────────
+function mostrarModalDuplicado(radicado, fecha) {
+  return new Promise(resolve => {
+    document.getElementById("modal-dup-msg").innerHTML =
+      `El radicado <b>${radicado}</b> ya fue sellado el <b>${fecha}</b>.<br>¿Deseas volver a sellarlo?`;
+    document.getElementById("modal-dup").style.display = "flex";
+
+    const btnOk     = document.getElementById("modal-dup-ok");
+    const btnCancel = document.getElementById("modal-dup-cancel");
+
+    function cleanup(val) {
+      document.getElementById("modal-dup").style.display = "none";
+      btnOk.removeEventListener("click", okHandler);
+      btnCancel.removeEventListener("click", cancelHandler);
+      resolve(val);
+    }
+    function okHandler()     { cleanup(true);  }
+    function cancelHandler() { cleanup(false); }
+
+    btnOk.addEventListener("click", okHandler);
+    btnCancel.addEventListener("click", cancelHandler);
+  });
+}
+
 // ── Buscar radicado en Excel ─────────────────────────────────────────────────
 async function buscarRadicado() {
   const numero = inpRadicado.value.trim();
@@ -98,6 +180,20 @@ async function buscarRadicado() {
   const res = await window.api.buscarRadicado({ numero, rutaExcel: state.excel });
 
   if (res.encontrado) {
+    // Verificar duplicado en historial
+    const dup = historialData.find(h => String(h.radicado) === String(res.datos.radicado));
+    if (dup) {
+      const continuar = await mostrarModalDuplicado(res.datos.radicado, dup.fecha_sellado);
+      if (!continuar) {
+        state.datosRadicado = null;
+        divDatos.style.background = "var(--red-light)";
+        divDatos.style.borderColor = "#FFCDD2";
+        divDatos.innerHTML = `⚠ Radicado <b>${res.datos.radicado}</b> ya fue sellado. Operación cancelada.`;
+        validateReady();
+        return;
+      }
+    }
+
     state.datosRadicado = res.datos;
     const d = res.datos;
     divDatos.innerHTML =
@@ -255,6 +351,7 @@ btnProcess.addEventListener("click", async () => {
       `<span class="stat-fail">✗ ${result.fail} errores</span>&nbsp;&nbsp;` +
       `de ${result.total} total`;
     btnOpenOut.disabled = false;
+    cargarHistorial();
   } else {
     log(`Error: ${result.error}`, "error");
     resultText.textContent = `Error: ${result.error}`;
@@ -271,16 +368,17 @@ btnProcess.addEventListener("click", async () => {
 //  TABS
 // ════════════════════════════════════════════════════════════════════════════
 
-document.getElementById("tab-btn-procesar").addEventListener("click", () => switchTab("procesar"));
-document.getElementById("tab-btn-preview").addEventListener("click",  () => switchTab("preview"));
-document.getElementById("hint-go-preview").addEventListener("click",  () => switchTab("preview"));
+document.getElementById("tab-btn-procesar").addEventListener("click",  () => switchTab("procesar"));
+document.getElementById("tab-btn-preview").addEventListener("click",   () => switchTab("preview"));
+document.getElementById("tab-btn-historial").addEventListener("click", () => switchTab("historial"));
 
 function switchTab(name) {
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
   document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
   document.getElementById("tab-btn-" + name).classList.add("active");
   document.getElementById("panel-" + name).classList.add("active");
-  if (name === "preview") pvDrawAll();
+  if (name === "preview")   pvDrawAll();
+  if (name === "historial") cargarHistorial();
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -473,6 +571,9 @@ function pvSyncLogo(logoPath) {
 (async () => {
   log("Aplicación lista.", "info");
   log("Seleccione el Excel de radicados, los documentos (.docx o .pdf) y la carpeta de salida.", "info");
+
+  // Cargar historial en segundo plano para tener datos de duplicados disponibles
+  cargarHistorial();
 
   // Cargar configuración guardada
   const savedCfg = await window.api.getConfig();

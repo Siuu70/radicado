@@ -169,7 +169,13 @@ async function processAll({ datosRadicado, docsFiles, outDir }, onProgress) {
   onProgress({ type: "info", msg: `Radicado: ${datosRadicado.radicado} — ${datosRadicado.asunto}` });
   onProgress({ type: "info", msg: `Archivos a procesar: ${docsFiles.length}` });
 
+  const ahora = new Date();
+  const fechaSellado = ahora.toLocaleDateString("es-CO", { day: "2-digit", month: "2-digit", year: "numeric" });
+  const horaSellado  = `${String(ahora.getHours()).padStart(2,"0")}:${String(ahora.getMinutes()).padStart(2,"0")}`;
+  const procesadoPor = datosRadicado.radicadoPor || "";
+
   let ok = 0, fail = 0;
+  const historialEntries = [];
 
   for (let i = 0; i < docsFiles.length; i++) {
     const filePath = docsFiles[i];
@@ -184,6 +190,15 @@ async function processAll({ datosRadicado, docsFiles, outDir }, onProgress) {
       if (result.ok) {
         ok++;
         onProgress({ type: "ok", msg: `Procesado: ${nombre}` });
+        historialEntries.push({
+          radicado:     datosRadicado.radicado,
+          fecha_sellado: fechaSellado,
+          hora_sellado:  horaSellado,
+          pdf_original:  nombre,
+          pdf_sellado:   path.basename(result.outFile),
+          asunto:        datosRadicado.asunto,
+          procesado_por: procesadoPor,
+        });
       } else {
         fail++;
         onProgress({ type: "error", msg: `Omitido: ${nombre} — ${result.reason}` });
@@ -193,7 +208,7 @@ async function processAll({ datosRadicado, docsFiles, outDir }, onProgress) {
       onProgress({ type: "error", msg: `ERROR en ${nombre}: ${err.message}` });
     }
   }
-  return { ok, fail, total: docsFiles.length };
+  return { ok, fail, total: docsFiles.length, historialEntries };
 }
 
 module.exports = { processAll, excelDateToString, excelTimeToString };
